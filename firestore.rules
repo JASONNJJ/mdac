@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.role == 'admin' || 
+         get(/databases/database/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    // Applications collection
+    match /applications/{applicationId} {
+      // Anyone can create a new entry card application (public guest submission)
+      allow create: if request.resource.data.status == 'New' 
+                    && request.resource.data.applicationId != null;
+      
+      // Admin can read all; Applicant can read if user uid matches or by matching query
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      
+      // Only admin can update or delete applications
+      allow update, delete: if isAdmin();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Admin Audit Logs
+    match /adminLogs/{logId} {
+      allow read, create: if isAdmin();
+      allow update, delete: if false; // immutable logs
+    }
+  }
+}

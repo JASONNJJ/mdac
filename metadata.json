@@ -1,0 +1,6 @@
+{
+  "name": "Malaysia Entry Assistance",
+  "description": "第三方马来西亚入境卡填写协助服务平台。提供中英文双语多步骤入境卡信息填写协助、数据保存、申请状态查询以及安全管理后台服务。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

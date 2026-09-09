@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "Application": {
+      "properties": {
+        "applicationId": { "type": "string" },
+        "personalInfo": { "type": "object" },
+        "passportInfo": { "type": "object" },
+        "travelInfo": { "type": "object" },
+        "accommodation": { "type": "object" },
+        "contactInfo": { "type": "object" },
+        "status": { "type": "string" },
+        "adminNotes": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "rules": {
+        "read": "isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid)",
+        "write": "isAdmin() || request.resource.data.status == 'New'"
+      }
+    },
+    "User": {
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "rules": {
+        "read": "isAuthenticated() && (request.auth.uid == userId || isAdmin())",
+        "write": "isAdmin()"
+      }
+    },
+    "AdminLog": {
+      "properties": {
+        "id": { "type": "string" },
+        "adminUid": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "applicationId": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "rules": {
+        "read": "isAdmin()",
+        "write": "isAdmin()"
+      }
+    }
+  }
+}
