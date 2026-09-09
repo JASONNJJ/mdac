@@ -1,10 +1,18 @@
 import 'dotenv/config';
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
 import Stripe from 'stripe';
-import { createServer as createViteServer } from 'vite';
 
 const PORT = 3000;
+
+// Process safety handlers to prevent abrupt container termination
+process.on('uncaughtException', (err) => {
+  console.error('[Server Uncaught Exception]:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Server Unhandled Rejection]:', reason);
+});
 
 // Lazy Stripe initialization
 let stripeClient: Stripe | null = null;
@@ -374,9 +382,15 @@ async function startServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // Health check
+  // Health checks for Cloud Run, container probes, and monitoring
+  app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+  app.get('/_health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
   // Config Endpoint (Safe public exposure of publishable keys & configuration status)
@@ -840,22 +854,59 @@ async function startServer() {
   });
 
   // 3. Vite Middleware for Development / Static file serving for Production
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
+  const isProduction =
+    process.env.NODE_ENV === 'production' ||
+    (typeof __filename !== 'undefined' && __filename.endsWith('.cjs'));
+
+  if (!isProduction) {
+    try {
+      // Dynamically import Vite only during development
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } catch (err) {
+      console.warn('[Server] Could not mount Vite dev middleware, serving static assets:', err);
+      serveStaticAssets(app);
+    }
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    serveStaticAssets(app);
   }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Server] Malaysia Entry Assistance running on port ${PORT}`);
+  });
+}
+
+function serveStaticAssets(app: express.Express) {
+  // Resolve dist path reliably across different execution contexts (e.g., from root or dist/)
+  let distPath = path.join(process.cwd(), 'dist');
+  if (!fs.existsSync(distPath) && typeof __dirname !== 'undefined') {
+    if (fs.existsSync(path.join(__dirname, 'index.html'))) {
+      distPath = __dirname;
+    } else if (fs.existsSync(path.join(__dirname, '..', 'dist'))) {
+      distPath = path.join(__dirname, '..', 'dist');
+    }
+  }
+
+  const indexPath = path.join(distPath, 'index.html');
+  console.log(`[Server] Serving static production files from: ${distPath}`);
+
+  app.use(express.static(distPath, { maxAge: '1h', index: false }));
+
+  app.get('*', (req, res) => {
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath, (err) => {
+        if (err && !res.headersSent) {
+          res.status(500).send('Error loading page');
+        }
+      });
+    } else {
+      // Graceful fallback response if index.html is being re-generated
+      res.status(200).send('<!doctype html><html><head><title>Malaysia Entry Assistance</title></head><body><div id="root">Loading application...</div></body></html>');
+    }
   });
 }
 
